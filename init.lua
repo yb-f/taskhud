@@ -249,28 +249,30 @@ local function displayGUI()
                             else
                                 second_task_selected = task_selected
                             end
-                            if objectives[connected_list[combo_selected]][task_selected][i].status ~= objectives[name][second_task_selected][i].status then
-                                local first_status = objectives[connected_list[combo_selected]][task_selected][i].status
-                                local second_status = objectives[name][second_task_selected][i].status
-                                local first_status_digit = tonumber(string.sub(first_status, 1, 1))
-                                local second_status_digit = tonumber(string.sub(second_status, 1, 1))
-                                if first_status ~= 'Done' and second_status == 'Done' then
-                                    ImGui.TextColored(IM_COL32(50, 180, 50),
-                                        string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                    ImGui.SameLine()
-                                elseif first_status == 'Done' and second_status ~= 'Done' then
-                                    ImGui.TextColored(IM_COL32(180, 50, 50),
-                                        string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                    ImGui.SameLine()
-                                elseif first_status_digit ~= nil and second_status_digit ~= nil then
-                                    if tonumber(string.sub(first_status, 1, 1)) > tonumber(string.sub(first_status, 1, 1)) then
-                                        ImGui.TextColored(IM_COL32(180, 50, 50),
-                                            string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                        ImGui.SameLine()
-                                    elseif tonumber(string.sub(first_status, 1, 1)) < tonumber(string.sub(first_status, 1, 1)) then
+                            if objectives[connected_list[combo_selected]][task_selected][i] ~= nil and objectives[name][second_task_selected][i] ~= nil then
+                                if objectives[connected_list[combo_selected]][task_selected][i].status ~= objectives[name][second_task_selected][i].status then
+                                    local first_status = objectives[connected_list[combo_selected]][task_selected][i].status
+                                    local second_status = objectives[name][second_task_selected][i].status
+                                    local first_status_digit = tonumber(string.sub(first_status, 1, 1))
+                                    local second_status_digit = tonumber(string.sub(second_status, 1, 1))
+                                    if first_status ~= 'Done' and second_status == 'Done' then
                                         ImGui.TextColored(IM_COL32(50, 180, 50),
                                             string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
                                         ImGui.SameLine()
+                                    elseif first_status == 'Done' and second_status ~= 'Done' then
+                                        ImGui.TextColored(IM_COL32(180, 50, 50),
+                                            string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                        ImGui.SameLine()
+                                    elseif first_status_digit ~= nil and second_status_digit ~= nil then
+                                        if tonumber(string.sub(first_status, 1, 1)) > tonumber(string.sub(first_status, 1, 1)) then
+                                            ImGui.TextColored(IM_COL32(180, 50, 50),
+                                                string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                            ImGui.SameLine()
+                                        elseif tonumber(string.sub(first_status, 1, 1)) < tonumber(string.sub(first_status, 1, 1)) then
+                                            ImGui.TextColored(IM_COL32(50, 180, 50),
+                                                string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                            ImGui.SameLine()
+                                        end
                                     end
                                 end
                             end
@@ -279,8 +281,8 @@ local function displayGUI()
                     ImGui.TableNextRow()
                 end
             end
+            ImGui.EndTable()
         end
-        ImGui.EndTable()
     end
     ImGui.End()
 end
