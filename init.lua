@@ -96,7 +96,6 @@ local function update_tasks()
                             status = mq.TLO.Window('TaskWnd').Child('TASK_TaskElementList').List(j, 2)(),
                             objectiveID = count_two
                         })
-                    print(j, count_two)
                     count_two = count_two + 1
                 end
             end
@@ -281,8 +280,8 @@ local function displayGUI()
                 end
             end
         end
+        ImGui.EndTable()
     end
-    ImGui.EndTable()
     ImGui.End()
 end
 local function main()
@@ -308,9 +307,13 @@ end
 
 local function init()
     mq.cmd('/dge /lua run taskhud nohud')
-    mq.delay(200)
-    request_task_update()
-    mq.delay(400)
+    dannet_connected()
+    for i, name in pairs(connected_list) do
+        if name == string.lower(mq.TLO.Me.DisplayName()) then combo_selected = i end
+    end
+    do_refresh = true
+    --mq.delay(200)
+    --request_task_update()
 end
 
 if #arg == 0 then
