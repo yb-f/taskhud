@@ -38,7 +38,7 @@ local task_selected = 1
 --Variables that will trigger functions to run if true
 local changed = false
 local do_refresh = false
-local do_update_tasks = true
+local do_update_tasks = false
 
 --Variable for who is requesting the updates.  No need to process updates on characters that are not displaying the gui.
 local requester = ''
@@ -107,6 +107,7 @@ end
 --Send character information, first thing triggered in the refresh process.
 --Sends information to the character requesting updates to populate list of characters in the task and objectives tables.
 local function send_character()
+    mq.cmdf("/dgt Sending to %s", requester)
     actors:send(
         {
             script = 'taskhud',
@@ -197,15 +198,13 @@ local actor = actors.register(function(message)
                     recepient = message.content.sender
                 })
         end
-    end
-    --If the message is confirmation of having received the character, set variable for next processing step to true
-    if message.content.id == 'CHARACTER_RECEIVED' then
+        --If the message is confirmation of having received the character, set variable for next processing step to true
+    elseif message.content.id == 'CHARACTER_RECEIVED' then
         if string.lower(message.content.recepient) == string.lower(mq.TLO.Me.DisplayName()) then
             character_message_received = true
         end
-    end
-    --If the message indicates a new task
-    if message.content.id == 'NEW_TASK' then
+        --If the message indicates a new task
+    elseif message.content.id == 'NEW_TASK' then
         if message.content.recepient == string.lower(mq.TLO.Me.DisplayName()) then
             --add task information to tasks table.
             table.insert(tasks[message.content.sender], message.content.taskID, message.content.name)
@@ -232,10 +231,13 @@ local actor = actors.register(function(message)
         end
         --If the message is asking for an update on tasks set variable to begin update process
     elseif message.content.id == 'REQUEST_TASKS' then
+        mq.cmdf('/dgt %s', message.content.id)
         for word in string.gmatch(message.content.recepient, '([^|]+)') do
             if word == string.lower(mq.TLO.Me.DisplayName()) then
+                mq.cmdf('/dgt %s', word)
                 requester = message.content.sender
                 do_update_tasks = true
+                --mq.cmdf("/dgt received update request from %s", requester)
             end
         end
     end
@@ -424,6 +426,7 @@ end
 --Main function.  Loop while running is true, check variables to see if function needs called.
 
 local function main()
+    mq.delay(500)
     while running == true do
         mq.delay(200)
         --request task/objective refresh
@@ -440,7 +443,6 @@ local function main()
         if character_message_received == true then
             update_tasks()
         end
-        --Received updates for all peers? Let's start drawing the gui again
         if num_updates_finished == peers_count then
             update_done = true
         end
@@ -457,6 +459,7 @@ local function init()
     for i, name in pairs(connected_list) do
         if name == string.lower(mq.TLO.Me.DisplayName()) then combo_selected = i end
     end
+    mq.delay(500)
     do_refresh = true
     --mq.delay(200)
     --request_task_update()
