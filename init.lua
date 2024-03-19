@@ -107,7 +107,6 @@ end
 --Send character information, first thing triggered in the refresh process.
 --Sends information to the character requesting updates to populate list of characters in the task and objectives tables.
 local function send_character()
-    mq.cmdf("/dgt Sending to %s", requester)
     actors:send(
         {
             script = 'taskhud',
@@ -183,6 +182,8 @@ local function update_tasks()
     mq.cmd("/windowstate TaskWnd close")
 end
 
+local msg_received = false
+
 --Handler for incoming messages
 local actor = actors.register(function(message)
     --If the message is for a new character, create the necessary elements for that charcter in the tasks and objectives tables
@@ -231,10 +232,8 @@ local actor = actors.register(function(message)
         end
         --If the message is asking for an update on tasks set variable to begin update process
     elseif message.content.id == 'REQUEST_TASKS' then
-        mq.cmdf('/dgt %s', message.content.id)
         for word in string.gmatch(message.content.recepient, '([^|]+)') do
             if word == string.lower(mq.TLO.Me.DisplayName()) then
-                mq.cmdf('/dgt %s', word)
                 requester = message.content.sender
                 do_update_tasks = true
                 --mq.cmdf("/dgt received update request from %s", requester)
@@ -268,15 +267,17 @@ end
 --Draw the GUI
 local function displayGUI()
     --If the GUI is closed, set running to false and end the script (I dont like this, it is temporary, will be changed)
-    if not openGUI then running = false end
+    if not openGUI then return end
     --If the task/objectives tables are currently being drawn, wait to draw GUI to prevent running into nil values
-    if update_done == false then return end
+    if update_done == false then
+        return
+    end
     --Begin imgui window
     if do_refresh then
         dannet_connected()
         return
     end
-    openGUI, drawGUI = ImGui.Begin("Task HUD##" .. myName, openGUI, window_flags)
+    openGUI = ImGui.Begin("Task HUD##" .. myName, openGUI, window_flags)
     if drawGUI then
         dannet_connected()
         ImGui.PushItemWidth(200)
@@ -302,37 +303,42 @@ local function displayGUI()
         --if the # of tasks the selected character has is > 0 then make sure everyone else has it..
         --There have possibly been crashes related to this section
         --Add a nil check first, that should fix it.
-        if #tasks[connected_list[combo_selected]] ~= nil then
-            if #tasks[connected_list[combo_selected]] > 0 then
-                --loop over the character tables in the tasks table
-                for i, name in pairs(tasks) do
-                    local matched = false
-                    --loop over tasks the character in the current loop has
-                    for j, task in pairs(name) do
-                        --If it is the same task as the selected character, we matched
-                        if task == tasks[connected_list[combo_selected]][task_selected] then
-                            matched = true
+        if tasks[connected_list[combo_selected]] ~= nil then
+            if #tasks[connected_list[combo_selected]] ~= nil then
+                if #tasks[connected_list[combo_selected]] > 0 then
+                    --loop over the character tables in the tasks table
+                    for i, name in pairs(tasks) do
+                        local matched = false
+                        --loop over tasks the character in the current loop has
+                        for j, task in pairs(name) do
+                            --If it is the same task as the selected character, we matched
+                            if task == tasks[connected_list[combo_selected]][task_selected] then
+                                matched = true
+                            end
+                        end
+                        --If we didnt find a match on this character, add their name to the list of characters missing this task
+                        if matched == false then
+                            table.insert(missing_list, i)
                         end
                     end
-                    --If we didnt find a match on this character, add their name to the list of characters missing this task
-                    if matched == false then
-                        table.insert(missing_list, i)
-                    end
-                end
-                --If any characters are missing this task, draw the small section for displaying their names
-                if #missing_list > 0 then
-                    ImGui.SeparatorText("Missing this task")
-                    for i, missing in pairs(missing_list) do
-                        ImGui.TextColored(IM_COL32(180, 50, 50),
-                            string.upper(string.sub(missing, 1, 1)) .. string.sub(missing, 2, -1))
-                        if i < #missing_list then
-                            ImGui.SameLine()
-                            --This is just being used as a seperator.  Gives a nice strong -
-                            ImGui.Text(ICONS.MD_REMOVE)
-                            ImGui.SameLine()
+                    --If any characters are missing this task, draw the small section for displaying their names
+                    if #missing_list > 0 then
+                        ImGui.SeparatorText("Missing this task")
+                        for i, missing in pairs(missing_list) do
+                            ImGui.TextColored(IM_COL32(180, 50, 50),
+                                string.upper(string.sub(missing, 1, 1)) .. string.sub(missing, 2, -1))
+                            if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                mq.cmdf('/dex %s /foreground', missing)
+                            end
+                            if i < #missing_list then
+                                ImGui.SameLine()
+                                --This is just being used as a seperator.  Gives a nice strong -
+                                ImGui.Text(ICONS.MD_REMOVE)
+                                ImGui.SameLine()
+                            end
                         end
+                        ImGui.Separator()
                     end
-                    ImGui.Separator()
                 end
             end
         end
@@ -392,10 +398,16 @@ local function displayGUI()
                                     if first_status ~= 'Done' and second_status == 'Done' then
                                         ImGui.TextColored(IM_COL32(50, 180, 50),
                                             string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                        if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                            mq.cmdf('/dex %s /foreground', name)
+                                        end
                                         ImGui.SameLine()
                                     elseif first_status == 'Done' and second_status ~= 'Done' then
                                         ImGui.TextColored(IM_COL32(180, 50, 50),
                                             string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                        if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                            mq.cmdf('/dex %s /foreground', name)
+                                        end
                                         ImGui.SameLine()
                                         --Make sure the digits stored earlier are not nil, then compare first digit to determine
                                         --Which character is further ahead on the task, color name as such
@@ -403,10 +415,16 @@ local function displayGUI()
                                         if tonumber(string.sub(first_status, 1, 1)) > tonumber(string.sub(first_status, 1, 1)) then
                                             ImGui.TextColored(IM_COL32(180, 50, 50),
                                                 string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                            if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                                mq.cmdf('/dex %s /foreground', name)
+                                            end
                                             ImGui.SameLine()
                                         elseif tonumber(string.sub(first_status, 1, 1)) < tonumber(string.sub(first_status, 1, 1)) then
                                             ImGui.TextColored(IM_COL32(50, 180, 50),
                                                 string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                            if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                                mq.cmdf('/dex %s /foreground', name)
+                                            end
                                             ImGui.SameLine()
                                         end
                                     end
@@ -421,6 +439,38 @@ local function displayGUI()
         end
     end
     ImGui.End()
+end
+
+local function init()
+    dannet_connected()
+    for i, name in pairs(connected_list) do
+        if name == string.lower(mq.TLO.Me.DisplayName()) then combo_selected = i end
+    end
+    mq.delay(500)
+    do_refresh = true
+    --mq.delay(200)
+    --request_task_update()
+end
+
+local cmd_th = function(cmd)
+    if cmd == nil or cmd == 'help' then
+        printf("%s \ar/th exit \ao--- Exit script (Also \ar/th stop \aoand \ar/th quit)", taskheader)
+        printf("%s \ar/th show \ao--- Show UI", taskheader)
+        printf("%s \ar/th hide \ao--- Hide UI", taskheader)
+    end
+    if cmd == 'exit' or cmd == 'quit' or cmd == 'stop' then
+        mq.cmd('/dgae /lua stop taskhud')
+        running = false
+    end
+    if cmd == 'show' then
+        printf("%s \aoShowing UI.", taskheader)
+        init()
+        openGUI = true
+    end
+    if cmd == 'hide' then
+        printf("%s \aoHiding UI.", taskheader)
+        openGUI = false
+    end
 end
 
 --Main function.  Loop while running is true, check variables to see if function needs called.
@@ -451,25 +501,22 @@ local function main()
     mq.cmd("/dgae /lua stop taskhud")
 end
 
+mq.bind('/th', cmd_th)
+printf("%s \agstarting. Use \ar/th help \ag for a list of commands.", taskheader)
+
+
+
 --initialization function ran on main client.  Tells other peers to run in background.  Get a list of peers and populate
 --The connected_list, and then request task/objective information
-local function init()
-    mq.cmd('/dge /lua run taskhud nohud')
-    dannet_connected()
-    for i, name in pairs(connected_list) do
-        if name == string.lower(mq.TLO.Me.DisplayName()) then combo_selected = i end
-    end
-    mq.delay(500)
-    do_refresh = true
-    --mq.delay(200)
-    --request_task_update()
-end
+
+
+mq.imgui.init('displayGUI', displayGUI)
 
 --If no runtime arguements, initialize other clients and draw gui then start main() loop
 if #arg == 0 then
+    mq.cmd('/dge /lua run taskhud nohud')
     init()
     mq.delay(200)
-    mq.imgui.init('displayGUI', displayGUI)
     main()
     --if runtime arguement of 'nohud' do not initialize or draw gui, start main() loop
 elseif arg[1]:lower() == 'nohud' then
