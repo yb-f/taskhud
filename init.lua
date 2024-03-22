@@ -280,14 +280,20 @@ local function displayGUI()
     openGUI = ImGui.Begin("Task HUD##" .. myName, openGUI, window_flags)
     if drawGUI then
         dannet_connected()
-        ImGui.PushItemWidth(200)
+        ImGui.PushItemWidth(100)
         combo_selected, changed = ImGui.Combo('##CharacterCombo', combo_selected, connected_list, #connected_list,
             #connected_list)
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('Selected Character for tasks')
+        end
         ImGui.PopItemWidth()
         ImGui.SameLine()
-        ImGui.PushItemWidth(150)
+        ImGui.PushItemWidth(100)
         peer_selected, do_refresh = ImGui.Combo('##PeerGroupCombo', peer_selected, peer_groups, #peer_groups,
             #peer_groups)
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('Peer group')
+        end
         ImGui.PopItemWidth()
         --Uncomment line below to automatically refresh when choosing new characters in the dropdown list
         ImGui.SameLine()
@@ -296,7 +302,12 @@ local function displayGUI()
         end
         --combo box of tasks the selected character has
         if tasks[connected_list[combo_selected]] ~= nil then
+            ImGui.PushItemWidth(220)
             task_selected = ImGui.Combo('##TaskCombo', task_selected, tasks[connected_list[combo_selected]])
+            ImGui.PopItemWidth()
+            if ImGui.IsItemHovered() then
+                ImGui.SetTooltip('Selected task')
+            end
         end
         --list of characters who are missing the selected task
         local missing_list = {}
@@ -327,8 +338,12 @@ local function displayGUI()
                         for i, missing in pairs(missing_list) do
                             ImGui.TextColored(IM_COL32(180, 50, 50),
                                 string.upper(string.sub(missing, 1, 1)) .. string.sub(missing, 2, -1))
-                            if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
-                                mq.cmdf('/dex %s /foreground', missing)
+                            if ImGui.IsItemHovered() then
+                                ImGui.SetTooltip('Bring %s to foreground',
+                                    string.upper(string.sub(missing, 1, 1)) .. string.sub(missing, 2, -1))
+                                if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                    mq.cmdf('/dex %s /foreground', missing)
+                                end
                             end
                             if i < #missing_list then
                                 ImGui.SameLine()
@@ -398,15 +413,23 @@ local function displayGUI()
                                     if first_status ~= 'Done' and second_status == 'Done' then
                                         ImGui.TextColored(IM_COL32(50, 180, 50),
                                             string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                        if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
-                                            mq.cmdf('/dex %s /foreground', name)
+                                        if ImGui.IsItemHovered() then
+                                            ImGui.SetTooltip('Bring %s to foreground',
+                                                string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                            if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                                mq.cmdf('/dex %s /foreground', name)
+                                            end
                                         end
                                         ImGui.SameLine()
                                     elseif first_status == 'Done' and second_status ~= 'Done' then
                                         ImGui.TextColored(IM_COL32(180, 50, 50),
                                             string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                        if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
-                                            mq.cmdf('/dex %s /foreground', name)
+                                        if ImGui.IsItemHovered() then
+                                            ImGui.SetTooltip('Bring %s to foreground',
+                                                string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                            if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                                mq.cmdf('/dex %s /foreground', name)
+                                            end
                                         end
                                         ImGui.SameLine()
                                         --Make sure the digits stored earlier are not nil, then compare first digit to determine
@@ -415,15 +438,23 @@ local function displayGUI()
                                         if tonumber(string.sub(first_status, 1, 1)) > tonumber(string.sub(first_status, 1, 1)) then
                                             ImGui.TextColored(IM_COL32(180, 50, 50),
                                                 string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                            if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
-                                                mq.cmdf('/dex %s /foreground', name)
+                                            if ImGui.IsItemHovered() then
+                                                ImGui.SetTooltip('Bring %s to foreground',
+                                                    string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                                if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                                    mq.cmdf('/dex %s /foreground', name)
+                                                end
                                             end
                                             ImGui.SameLine()
                                         elseif tonumber(string.sub(first_status, 1, 1)) < tonumber(string.sub(first_status, 1, 1)) then
                                             ImGui.TextColored(IM_COL32(50, 180, 50),
                                                 string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                            if ImGui.IsItemHovered() and ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
-                                                mq.cmdf('/dex %s /foreground', name)
+                                            if ImGui.IsItemHovered() then
+                                                ImGui.SetTooltip('Bring %s to foreground',
+                                                    string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
+                                                if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                                    mq.cmdf('/dex %s /foreground', name)
+                                                end
                                             end
                                             ImGui.SameLine()
                                         end
@@ -448,8 +479,6 @@ local function init()
     end
     mq.delay(500)
     do_refresh = true
-    --mq.delay(200)
-    --request_task_update()
 end
 
 local cmd_th = function(cmd)
