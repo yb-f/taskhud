@@ -1,5 +1,5 @@
 --[[
-    Create a window where you can compare the progress of tasks vs other dannet connected clients
+    Create a window where you can compare the progress of tasks vs other dannet connected clients.
 
 ]]
 
