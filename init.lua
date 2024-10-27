@@ -1,6 +1,5 @@
 --[[
     Create a window where you can compare the progress of tasks vs other dannet connected clients.
-
 ]]
 
 local mq = require('mq')
