@@ -413,8 +413,27 @@ local function displayGUI()
             triggers.do_refresh = true
         end
         ImGui.Separator()
-        for _, name in pairs(task_data.data_received_from) do
-            ImGui.Text("Data received from - %s", name)
+        local not_completed = {}
+        local received_names_lookup = {}
+        for _, received_name in pairs(task_data.data_received_from) do
+            ImGui.Text("Data received from - %s", received_name)
+            received_names_lookup[received_name] = true
+        end
+        for _, name in pairs(peer_info.connected_list) do
+            if not received_names_lookup[name] then
+                table.insert(not_completed, name)
+            end
+        end
+        if #not_completed > 0 then
+            ImGui.Text("Update not received from:")
+        end
+        for i, name in pairs(not_completed) do
+            ImGui.TextColored(IM_COL32(180, 50, 50, 255), name)
+            if i < #not_completed then
+                ImGui.SameLine()
+                ImGui.Text(ICONS.MD_REMOVE)
+                ImGui.SameLine()
+            end
         end
         ImGui.End()
     else
