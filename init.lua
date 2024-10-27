@@ -33,7 +33,9 @@ local triggers = {
     do_update_tasks = false,
     update_done = false,
     character_message_received = false,
-    requester = ''
+    requester = '',
+    most_recent_requester = '',
+    current_timestamp = 0
 }
 
 --Table of tasks and objectives
@@ -213,6 +215,7 @@ local function update_tasks()
         })
     --Reset variables and close the task window
     triggers.character_message_received = false
+    triggers.most_recent_requester = triggers.requester
     triggers.requester = ''
     mq.TLO.Window('TaskWnd').DoClose()
 end
@@ -222,6 +225,12 @@ end
     request type is stored in message.content.id
     Valid request types are: REQUEST_TASKS, NEW_CHARACTER, CHARACTER_RECEIVED, NEW_TASK, TASK_OBJECTIVE, END_TASKS
 ]]
+
+local function close_script()
+    openGUI = false
+    mq.exit()
+end
+
 
 local actor = actors.register(function(message)
     if debug_mode == true then
@@ -312,6 +321,24 @@ local actor = actors.register(function(message)
                 printf("%s Finished receiving from - %s", taskheader, message.content.sender)
             end
         end
+        --[[
+        Handle the TASKS_UPDATED message
+        This message is sent when a task is updated on one of the characters in your peer group
+        We check if we are the intended recepient and if so we trigger a REQUEST_TASKS message
+    ]]
+    elseif message.content.id == "TASKS_UPDATED" then
+        if message.content.recepient == my_name then
+            if triggers.update_done == true then
+                triggers.do_refresh = true
+            end
+        end
+        --[[
+        Handle the END_SCRIPT message
+        This message is sent when "running" is no longer true
+        We will gracefully shutdown the script
+    ]]
+    elseif message.content.id == 'END_SCRIPT' then
+        close_script()
     end
 end)
 
@@ -491,6 +518,17 @@ local function init()
     openGUI = true
 end
 
+local function update_event()
+    actors:send(
+        {
+            script = 'taskhud',
+            id = 'TASKS_UPDATED',
+            recepient = triggers.most_recent_requester,
+            sender = my_name
+        })
+end
+
+
 --Handling for the /th command
 local cmd_th = function(cmd)
     if cmd == nil or cmd == 'help' then
@@ -527,6 +565,8 @@ end
 local function main()
     mq.delay(500)
     while running == true do
+        --process events
+        mq.doevents()
         mq.delay(200)
         --Request a refresh of task and objective data
         if triggers.do_refresh == true then
@@ -544,13 +584,19 @@ local function main()
         if #peer_info.connected_list == #task_data.data_received_from then
             triggers.update_done = true
         end
-        --TODO Add something to check if all peer updates have been received and set triggers.update_done to true if so
     end
-    --TODO Should we shut down the clients with a message via actors instead? It would be a cleaner way to do it
-    mq.cmd("/dgae /lua stop taskhud")
+    actors:send(
+        {
+            script = 'taskhud',
+            id = 'END_SCRIPT',
+            sender = my_name
+        })
+    mq.exit()
 end
 
 mq.bind('/th', cmd_th)
+mq.event('update_event', '#*#Your task \'#*#\' has been updated#*#', update_event)
+mq.event('new_task_event', '#*#You have been assigned the task#*#', update_event)
 printf("%s \agstarting. use \ar/th help \agfor a list of commands.", taskheader)
 mq.imgui.init('displayGUI', displayGUI)
 
