@@ -615,6 +615,7 @@ end
 mq.bind('/th', cmd_th)
 mq.event('update_event', '#*#Your task \'#*#\' has been updated#*#', update_event)
 mq.event('new_task_event', '#*#You have been assigned the task#*#', update_event)
+mq.event('shared_task_event', '#*#Your shared task#*# has ended.', update_event)
 printf("%s \agstarting. use \ar/th help \agfor a list of commands.", taskheader)
 mq.imgui.init('displayGUI', displayGUI)
 
