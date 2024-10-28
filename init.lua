@@ -335,6 +335,7 @@ local cmd_th = function(cmd)
     end
     if cmd == 'show' then
         printf("%s \aoShowing UI.", taskheader)
+        triggers.do_refresh = true
         drawGUI = true
     end
     if cmd == 'hide' then
@@ -360,7 +361,6 @@ local function main()
         mq.doevents()
         mq.delay(200)
         if triggers.do_refresh then
-            triggers.update_done = false
             request_task_update()
             triggers.do_refresh = false
         end
