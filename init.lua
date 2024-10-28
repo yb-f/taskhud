@@ -18,6 +18,7 @@ local drawGUI = false
 local triggers = {
     do_refresh = false,
     timestamp = mq.gettime(),
+    need_task_update = false
 }
 
 local peer_list = {}
@@ -26,6 +27,7 @@ local peer_types = { 'Group', 'Zone', 'All', }
 --Table of tasks and objectives
 local task_data = {
     tasks = {},
+    my_tasks = {},
 }
 --Table of information about selections
 local selected_info = {
@@ -33,16 +35,15 @@ local selected_info = {
     selected_peer_type = 1,
     selected_task = 1,
 }
-local my_tasks = {} -- Table of tasks for the current character
+
 --Arguements passed when starting the script (This is important for loading a background version of the script on client machines)
-local args = { ..., }
+local args = { ... }
 
 local missing = {}
 
 --Header for chat output
 local taskheader = "\ay[\agTaskHud\ay]"
 
-local need_task_update = false
 local running = true
 local debug_mode = false
 local my_name = mq.TLO.Me.DisplayName()
@@ -160,7 +161,7 @@ end
 local actor = actors.register(function(message)
     --Handle REQUEST_TASKS message, this will set a variable to trigger the task update function from the main loop
     if message.content.id == 'REQUEST_TASKS' then
-        need_task_update = true
+        triggers.need_task_update = true
         peer_list = {}
         task_data.tasks = {}
         missing.missing_task_status = {}
@@ -348,10 +349,10 @@ local cmd_th = function(cmd)
 end
 
 local function generate_content()
-    my_tasks = {}
-    my_tasks = get_tasks()
+    task_data.my_tasks = {}
+    task_data.my_tasks = get_tasks()
     mq.delay(3000, function() return not mq.TLO.Window('TaskWnd').Open() end)
-    actor:send({ id = 'INCOMING_TASKS', tasks = my_tasks, })
+    actor:send({ id = 'INCOMING_TASKS', tasks = task_data.my_tasks, })
 end
 
 local function main()
