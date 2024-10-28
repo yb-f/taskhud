@@ -376,8 +376,6 @@ end
 
 local function update_event()
     actors:send({ id = 'TASKS_UPDATED', })
-    print(mq.gettime())
-    print(triggers.timestamp)
 end
 
 local function create_events()
