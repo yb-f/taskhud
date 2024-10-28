@@ -388,14 +388,17 @@ local function check_args()
         mq.cmd('/dge /lua run taskhud nohud')
         drawGUI = true
         triggers.do_refresh = true
-        --if runtime arguement of 'nohud' do not initialize or draw gui, start main() loop
-    elseif args[1]:lower() == 'nohud' then
-        drawGUI = false
-    elseif args[1]:lower() == 'debug' then
-        debug_mode = true
-        mq.cmd('/dge /lua run taskhud nohud')
-        drawGUI = true
-        triggers.do_refresh = true
+    else
+        for _, arg in pairs(args) do
+            if arg == 'nohud' then
+                drawGUI = false
+            elseif arg == 'debug' then
+                debug_mode = true
+                mq.cmd('/dge /lua run taskhud nohud')
+                drawGUI = true
+                triggers.do_refresh = true
+            end
+        end
     end
 end
 
