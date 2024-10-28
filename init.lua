@@ -365,8 +365,8 @@ local function main()
             request_task_update()
             triggers.do_refresh = false
         end
-        if need_task_update then
-            need_task_update = false
+        if triggers.need_task_update then
+            triggers.need_task_update = false
             generate_content()
         end
     end
