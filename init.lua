@@ -335,8 +335,8 @@ local cmd_th = function(cmd)
     end
     if cmd == 'show' then
         printf("%s \aoShowing UI.", taskheader)
-        triggers.do_refresh = true
         drawGUI = true
+        triggers.do_refresh = true
     end
     if cmd == 'hide' then
         printf("%s \aoHiding UI.", taskheader)
@@ -387,6 +387,7 @@ local function check_args()
     if #args == 0 then
         mq.cmd('/dge /lua run taskhud nohud')
         drawGUI = true
+        triggers.do_refresh = true
         --if runtime arguement of 'nohud' do not initialize or draw gui, start main() loop
     elseif args[1]:lower() == 'nohud' then
         drawGUI = false
@@ -394,6 +395,7 @@ local function check_args()
         debug_mode = true
         mq.cmd('/dge /lua run taskhud nohud')
         drawGUI = true
+        triggers.do_refresh = true
     end
 end
 
@@ -403,7 +405,6 @@ local function init()
     mq.bind('/th', cmd_th)
     printf("%s \agstarting. use \ar/th help \agfor a list of commands.", taskheader)
     mq.delay(500)
-    triggers.do_refresh = true
 end
 
 check_args()
