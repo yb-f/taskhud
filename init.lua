@@ -331,7 +331,6 @@ local cmd_th = function(cmd)
         printf("%s \ar/th debug \ao--- Toggle debug mode", taskheader)
     end
     if cmd == 'exit' or cmd == 'quit' or cmd == 'stop' then
-        mq.cmd('/dgae /lua stop taskhud')
         running = false
     end
     if cmd == 'show' then
