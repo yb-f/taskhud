@@ -370,12 +370,7 @@ local function main()
             update_tasks()
         end
     end
-    actor:send(
-        {
-            script = 'taskhud',
-            id = 'END_SCRIPT',
-            sender = my_name,
-        })
+    actor:send({ id = 'END_SCRIPT', })
     mq.exit()
 end
 
