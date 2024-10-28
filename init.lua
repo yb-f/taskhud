@@ -12,191 +12,74 @@ local FIRST_WINDOW_WIDTH = 445
 local FIRST_WINDOW_HEIGHT = 490
 --Window flags for GUI window, currently none are used but easier this way if any are added later
 local window_flags = bit32.bor(ImGuiWindowFlags.None)
-local openGUI, drawGUI = false, true
-
-
---Table with information about peers
-local peer_info = {
-    peer_groups = { "Group", "Zone", "All" },
-    peer_selected = 1,
-    peers_count = 1,
-    peer_group = '',
-    peer_list = '',
-    connected_list = {}
-}
+local openGUI = false
 
 --Table with variables that trigger functions to run
 local triggers = {
-    changed = false,
     do_refresh = false,
-    do_update_tasks = false,
-    update_done = false,
-    character_message_received = false,
-    requester = '',
-    most_recent_requester = '',
-    current_timestamp = 0
+    timestamp = mq.gettime()
 }
+
+local peer_list = {}
+local peer_types = { 'Group', 'Zone', 'All' }
 
 --Table of tasks and objectives
 local task_data = {
     tasks = {},
-    objectives = {},
-    task_selected = 1,
-    data_received_from = {}
 }
-
 --Table of information about selections
 local selected_info = {
-    selected_task_name = '',
-    selected_character = '',
-    selected_combo = 1
+    selected_combo = 1,
+    selected_peer_type = 1,
+    selected_task = 1,
 }
 
 --Arguements passed when starting the script (This is important for loading a background version of the script on client machines)
 local arg = { ... }
 
+local missing = {}
+
 --Header for chat output
 local taskheader = "\ay[\agTaskHud\ay]"
 
-local list_item = 0
 local running = true
 local debug_mode = false
-local my_name = string.lower(mq.TLO.Me.DisplayName())
+local my_name = mq.TLO.Me.DisplayName()
 
+local dannet = mq.TLO.Plugin('mq2dannet').IsLoaded()
 
---End of variable declareations
+--End of variable declarations
 
---Exit if dannet is not loaded
-if mq.TLO.Plugin('mq2dannet').IsLoaded() == false then
-    printf("%s \aoDanNet is required for this plugin.  \arExiting", taskheader)
+local function close_script()
     mq.exit()
 end
 
---[[
-    Populate list of connected peers based on what peer group is selected
-    1 = Group
-    2 = Zone
-    3 = All
-]]
-local function dannet_connected()
-    peer_info.connected_list = {}
-    if peer_info.peer_selected == 1 then
-        if mq.TLO.EverQuest.Server() ~= nil and mq.TLO.Group.Leader() ~= nil then
-            peer_info.peer_group = string.format("group_%s_%s", mq.TLO.EverQuest.Server(), string.lower(mq.TLO.Group.Leader()))
-        end
-    elseif peer_info.peer_selected == 2 then
-        if mq.TLO.EverQuest.Server() ~= nil and mq.TLO.Zone.ShortName() ~= nil then
-            peer_info.peer_group = string.format("zone_%s_%s", mq.TLO.EverQuest.Server(), mq.TLO.Zone.ShortName())
-        end
-    elseif peer_info.peer_selected == 3 then
-        peer_info.peer_group = 'all'
-    end
-    peer_info.peer_list = mq.TLO.DanNet.Peers(peer_info.peer_group)()
-    for word in string.gmatch(peer_info.peer_list, '([^|]+)') do
-        table.insert(peer_info.connected_list, word)
-    end
-    peer_info.peers_count = mq.TLO.DanNet.PeerCount(peer_info.peer_group)()
-end
-
---Return true if task window is open, false if not
-local function task_window_open()
-    return mq.TLO.Window('TaskWnd').Open()
-end
-
---Check which item is selected in the Task List, if it matches list_item return true to end Delay() early
-local function get_selection_num()
-    if mq.TLO.Window('TaskWnd').Child('TASK_TaskList').GetCurSel() == list_item then
-        return true
-    end
-    return false
-end
-
-
---[[
-    Send a request to connected clients to update task/objective information
-    This is done by sending a REQUEST_TASKS message with the recepient field set to a list of
-    all characters in the selected peer group
-]]
-local function request_task_update()
-    --Store the name of the currently selected task
-    if task_data.tasks[selected_info.selected_character] ~= nil then
-        selected_info.selected_task_name = task_data.tasks[selected_info.selected_character][task_data.task_selected]
-    end
-    selected_info.selected_character = peer_info.connected_list[selected_info.selected_combo]
-    --Clear currently stored tasks and objectives
-    task_data.tasks = {}
-    task_data.objectives = {}
-    task_data.data_received_from = {}
-    actors:send(
-        {
-            script = 'taskhud',
-            id = 'REQUEST_TASKS',
-            recepient = mq.TLO.DanNet.Peers(peer_info.peer_group)(),
-            sender = my_name
-        })
-    selected_info.selected_character = peer_info.connected_list[selected_info.selected_combo]
-    --Reset variables that start update process to false
-    triggers.do_refresh, triggers.changed = false, false
-end
-
---[[
-    Send character information to the character who requested the update
-    This sends a NEW_CHARACTER message via actors to indicate that they are a character which should be tracked
-]]
-local function send_character()
-    actors:send(
-        {
-            script = 'taskhud',
-            id = 'NEW_CHARACTER',
-            recepient = triggers.requester,
-            sender = my_name
-        })
-    triggers.do_update_tasks = false
-end
-
---[[
-    Send task and objective information to the client that made the request
-]]
-local function update_tasks()
+local function get_tasks()
+    local tasks = {}
     mq.TLO.Window('TaskWnd').DoOpen()
-    --Delay for up to 2s, terminated early if task window is open
-    mq.delay("2s", task_window_open)
-    --Create two counters to allow skipping over seperator lines in the task log
+    while mq.TLO.Window('TaskWnd').Open() == false do
+    end
     local count1, count2 = 1, 1
     for i = 1, mq.TLO.Window('TaskWnd/TASK_TaskList').Items() do
         mq.TLO.Window('TaskWnd/TASK_TaskList').Select(i)
-        list_item = i
-        --Delay for 200ms or until the selected list item matches i
-        mq.delay(200, get_selection_num)
+        while mq.TLO.Window('TaskWnd/TASK_TaskList').GetCurSel() ~= i do
+        end
         --Check that the name of the task is not nil, as is the case with seperator lines
         if mq.TLO.Window('TaskWnd/TASK_TaskList').List(i, 3)() ~= nil then
-            --Send a NEW_TASK message to the requester, containing task name, and number in list.
-            actors:send(
-                {
-                    script = 'taskhud',
-                    id = 'NEW_TASK',
-                    recepient = triggers.requester,
-                    sender = my_name,
-                    taskID = count1,
-                    name = mq.TLO.Window('TaskWnd/TASK_TaskList').List(i, 3)()
-                })
+            tasks[count1] = {
+                task_name = mq.TLO.Window('TaskWnd/TASK_TaskList').List(i, 3)(),
+                objectives = {}
+            }
+
             --Loop through the objectives of the current task
             for j = 1, mq.TLO.Window('TaskWnd/TASK_TaskElementList').Items() do
                 --Check that the name of the objective is not nil, as is the case with seperator lines
                 if mq.TLO.Window('TaskWnd/TASK_TaskElementList').List(j, 2)() ~= nil then
-                    --Send a TASK_OBJECTIVE message to the requester information on task #, objective # and completion status
-                    actors:send(
-                        {
-                            script = 'taskhud',
-                            id = 'TASK_OBJECTIVE',
-                            recepient = triggers.requester,
-                            sender = my_name,
-                            taskID = count1,
-                            name = mq.TLO.Window('TaskWnd/TASK_TaskList').List(i, 3)(),
-                            objective = mq.TLO.Window('TaskWnd/TASK_TaskElementList').List(j, 1)(),
-                            status = mq.TLO.Window('TaskWnd/TASK_TaskElementList').List(j, 2)(),
-                            objectiveID = count2
-                        })
+                    local tmp_objective = {
+                        objective = mq.TLO.Window('TaskWnd/TASK_TaskElementList').List(j, 1)(),
+                        status = mq.TLO.Window('TaskWnd/TASK_TaskElementList').List(j, 2)(),
+                    }
+                    table.insert(tasks[count1]['objectives'], count2, tmp_objective)
                     count2 = count2 + 1
                 end
             end
@@ -204,350 +87,241 @@ local function update_tasks()
             count1 = count1 + 1
         end
     end
-    --Send END_TASKS message indicating that all task and objective information has been sent
-    actors:send(
-        {
-            script = 'taskhud',
-            id = 'END_TASKS',
-            recepient = triggers.requester,
-            sender = my_name
-        })
-    --Reset variables and close the task window
-    triggers.character_message_received = false
-    triggers.most_recent_requester = triggers.requester
-    triggers.requester = ''
     mq.TLO.Window('TaskWnd').DoClose()
+    return tasks
 end
 
---[[
-    Process incoming messages. Perform appropriate actions for each request type
-    request type is stored in message.content.id
-    Valid request types are: REQUEST_TASKS, NEW_CHARACTER, CHARACTER_RECEIVED, NEW_TASK, TASK_OBJECTIVE, END_TASKS
-]]
+local function get_missing_tasks()
+    local miss_task = {}
 
-local function close_script()
-    openGUI = false
-    mq.exit()
-end
-
-
-local actor = actors.register(function(message)
-    if debug_mode == true then
-        printf("%s %s - %s -%s", taskheader, message.content.sender, message.content.recepient, message.content.id)
+    -- Create a list of all tasks across all characters
+    for name, task_table in pairs(task_data.tasks) do
+        for _, task in ipairs(task_table) do
+            local task_name = task.task_name
+            -- If the task is not already present in the table, add it
+            if not miss_task[task_name] then
+                miss_task[task_name] = { missing_characters = {}, objectives = {} }
+            end
+        end
     end
-    --[[
-        Handle the REQUEST_TASKS message
-        This is the first message sent out in the update request process
-        We will determine if our name is in the list of recepients
-        if so we will store who made the request in triggers.requester and trigger sending updates
-    ]]
+
+    -- Loop over each task and see if each character has it
+    for task_name, task_info in pairs(miss_task) do
+        for name, task_table in pairs(task_data.tasks) do
+            local has_task = false
+            for _, task in ipairs(task_table) do
+                -- If the character has the task, make note
+                if task.task_name == task_name then
+                    has_task = true
+                    for i, objective in ipairs(task.objectives) do
+                        if objective.objective ~= "? ? ?" then -- Skip if objective is unknown
+                            local objective_name = objective.objective
+
+                            -- Create an entry for the objective if it does not already exist
+                            if not miss_task[task_name].objectives[i] then
+                                miss_task[task_name].objectives[i] = { objective_name = objective_name, characters = {} }
+                            end
+
+                            -- Add character's name and status to the objectives table
+                            table.insert(miss_task[task_name].objectives[i].characters, {
+                                character = name,
+                                status = objective.status
+                            })
+                        end
+                    end
+                    break
+                end
+            end
+            -- If has_task is false, add the character to the missing list for that task
+            if not has_task then
+                table.insert(miss_task[task_name].missing_characters, name)
+            end
+        end
+    end
+
+    -- Debugging output
+    if debug_mode then
+        for task_name, task_info in pairs(miss_task) do
+            print("Task:", task_name)
+            print("  Missing characters:", table.concat(task_info.missing_characters, ", "))
+            for _, objective_info in ipairs(task_info.objectives) do
+                print(string.format("  Objective: %s", objective_info.objective_name))
+                for _, entry in ipairs(objective_info.characters) do
+                    print(string.format("    Character: %s Status: %s", entry.character, entry.status))
+                end
+            end
+        end
+    end
+    return miss_task
+end
+
+--Message handler
+local actor = actors.register(function(message)
+    --Handle REQUEST_TASKS message, this will set a variable to trigger the task update function from the main loop
     if message.content.id == 'REQUEST_TASKS' then
-        for word in string.gmatch(message.content.recepient, '([^|]+)') do
-            if word == my_name then
-                triggers.requester = message.content.sender
-                triggers.do_update_tasks = true
-            end
+        peer_list = {}
+        task_data.tasks = {}
+        missing.missing_task_status = {}
+        missing.missing_objective_status = {}
+        local task_table = get_tasks()
+        message:send({ id = 'INCOMING_TASKS', tasks = task_table })
+    elseif message.content.id == 'INCOMING_TASKS' then
+        --Handle INCOMING_TASKS message, this contains all task/objective data for the character who sent it
+        if openGUI == true then
+            task_data.tasks[message.sender.character] = message.content.tasks
+            table.insert(peer_list, message.sender.character)
+            table.sort(peer_list)
         end
-        --[[
-        Handle the NEW_CHARACTER message
-        This message is sent out after the requester sends a REQUEST_TASKS message
-        We create a table under tasks and objectives for each character we receive this message from
-        Then we send out a CHARACTER_RECEIVED message to indicate
-        we received the character and are ready for task/objectives
-    ]]
-    elseif message.content.id == 'NEW_CHARACTER' then
-        if message.content.recepient == my_name then
-            task_data.tasks[message.content.sender] = {}
-            task_data.objectives[message.content.sender] = {}
-            actors:send(
-                {
-                    script = 'taskhud',
-                    id = 'CHARACTER_RECEIVED',
-                    recepient = message.content.sender
-
-                })
+        missing = get_missing_tasks()
+        triggers.timestamp = mq.gettime()
+    elseif message.content.id == 'TASKS_UPDATED' then
+        --Handle TASKS_UPDATED message, this is sent when a task update event occurs
+        --and will lead to a REQUEST_TASKS request from the most recent requester
+        if mq.gettime() > triggers.timestamp + 1500 then
+            triggers.do_refresh = true
         end
-        --[[
-        Handle the CHARACTER_RECEIVED message
-        This message is sent out by the requester to each recepient as the requester receives their NEW_CHARACTER messages
-        We check if the message is intended for us, and if so set a variable to trigger the next step
-    ]]
-    elseif message.content.id == 'CHARACTER_RECEIVED' then
-        if message.content.recepient == my_name then
-            triggers.character_message_received = true
-        end
-
-        --[[
-        Handle the NEW_TASK message
-        This message is sent by each client after they receive the CHARACTER_RECEIVED message
-        It is also sent when all objectives for a task have been sent and we are moving to the next task
-        We check if the message is intended for us and if so we add the task to the tasks table for the character
-        who sent the message. We then check if the received task matches the task that was selected before
-        requesting the update and store the new ID if so. Then we create an entry for this task ID in
-        the objectives table
-    ]]
-    elseif message.content.id == 'NEW_TASK' then
-        if message.content.recepient == my_name then
-            table.insert(task_data.tasks[message.content.sender], message.content.taskID, message.content.name)
-            if selected_info.selected_task_name == message.content.name and peer_info.connected_list[selected_info.selected_combo] == message.content.sender then
-                task_data.task_selected = message.content.taskID
-            end
-            task_data.objectives[message.content.sender][message.content.taskID] = {}
-        end
-        --[[
-        Handle the TASK_OBJECTIVE message
-        This message is sent after the NEW_TASK message one for each objective of the current task
-        We check if the message is intended for us and then add the objective to the objectives
-        table for the caracter who send the message
-    ]]
-    elseif message.content.id == 'TASK_OBJECTIVE' then
-        if message.content.recepient == my_name then
-            task_data.objectives[message.content.sender][message.content.taskID][message.content.objectiveID] = {
-                objective = message.content.objective,
-                status = message.content.status
-            }
-        end
-        --[[
-        Handle the END_TASKS message
-        This is the final message sent by each client in the update exchange
-        We check if the message is intended for us and if so we add the sending character to the list
-        of characters we have received a full update from.
-    ]]
-    elseif message.content.id == 'END_TASKS' then
-        if message.content.recepient == my_name then
-            table.insert(task_data.data_received_from, message.content.sender)
-            if debug_mode == true then
-                printf("%s Finished receiving from - %s", taskheader, message.content.sender)
-            end
-        end
-        --[[
-        Handle the TASKS_UPDATED message
-        This message is sent when a task is updated on one of the characters in your peer group
-        We check if we are the intended recepient and if so we trigger a REQUEST_TASKS message
-    ]]
-    elseif message.content.id == "TASKS_UPDATED" then
-        if message.content.recepient == my_name then
-            if triggers.update_done == true then
-                triggers.do_refresh = true
-            end
-        end
-        --[[
-        Handle the END_SCRIPT message
-        This message is sent when "running" is no longer true
-        We will gracefully shutdown the script
-    ]]
     elseif message.content.id == 'END_SCRIPT' then
+        --Handle END_SCRIPT message, this will gracefully shutdown the taskhud script on all clients
         close_script()
     end
 end)
 
-local function get_missing_tasks()
-    local missing_list = {}
-    if task_data.tasks[selected_info.selected_character] and #task_data.tasks[selected_info.selected_character] > 0 then
-        for i, name in pairs(task_data.tasks) do
-            local matched = false
-            for _, task in pairs(name) do
-                if task == task_data.tasks[selected_info.selected_character][task_data.task_selected] then
-                    matched = true
-                    break
-                end
-            end
-            if not matched then
-                table.insert(missing_list, i)
-            end
-        end
-    end
-    return missing_list
+local function request_task_update()
+    actor:send({ id = 'REQUEST_TASKS' })
 end
 
-local function get_objective_progress(missing_list)
-    local progress_info = {}
-    if task_data.objectives[selected_info.selected_character] and task_data.objectives[selected_info.selected_character][task_data.task_selected] then
-        for i = 1, #task_data.objectives[selected_info.selected_character][task_data.task_selected] do
-            local obj_info = {}
-            obj_info.objective = task_data.objectives[selected_info.selected_character][task_data.task_selected][i].objective
-            obj_info.status = task_data.objectives[selected_info.selected_character][task_data.task_selected][i].status
-            obj_info.comparisons = {}
-            for _, name in pairs(peer_info.connected_list) do
-                local im_missing = false
-                for _, missing_name in pairs(missing_list) do
-                    if name == missing_name then
-                        im_missing = true
-                        break
-                    end
-                end
-                if not im_missing then
-                    local second_task_selected = task_data.tasks[selected_info.selected_character][task_data.task_selected] == task_data.tasks[name][task_data.task_selected] and
-                        task_data.task_selected or nil
-                    if task_data.tasks[selected_info.selected_character][task_data.task_selected] ~= task_data.tasks[name][task_data.task_selected] then
-                        for k, task_name in pairs(task_data.tasks[name]) do
-                            if task_data.tasks[selected_info.selected_character][task_data.task_selected] == task_name then
-                                second_task_selected = k
-                                break
-                            end
-                        end
-                    end
-                    if task_data.objectives[selected_info.selected_character][task_data.task_selected][i] and task_data.objectives[name][second_task_selected][i] then
-                        local first_status = task_data.objectives[selected_info.selected_character][task_data.task_selected][i].status
-                        local second_status = task_data.objectives[name][second_task_selected][i].status
-                        table.insert(obj_info.comparisons, { name = name, first_status = first_status, second_status = second_status })
-                    end
-                end
-            end
-            table.insert(progress_info, obj_info)
-        end
+local function compare_status(sel_status, cur_status)
+    if sel_status == 'Done' and cur_status ~= 'Done' then
+        return 1
+    elseif cur_status == 'Done' and sel_status ~= 'Done' then
+        return -1
     end
-    return progress_info
+    local sel_completed, sel_total = sel_status:match("(%d+)/(%d+)")
+    local cur_completed, cur_total = cur_status:match("(%d+)/(%d+)")
+    if sel_completed > cur_completed then
+        return 1
+    elseif cur_completed > sel_completed then
+        return -1
+    end
+    return 0
 end
-
 
 local function displayGUI()
     if not openGUI then return end
-    if not triggers.update_done then
-        ImGui.SetNextWindowSize(ImVec2(FIRST_WINDOW_WIDTH, FIRST_WINDOW_HEIGHT), ImGuiCond.FirstUseEver)
-        openGUI = ImGui.Begin("Task HUD##" .. my_name, openGUI, window_flags)
-        ImGui.Text("Collecting quest data.")
-        ImGui.SameLine()
-        if ImGui.SmallButton(ICONS.MD_REFRESH) then
-            triggers.do_refresh = true
+    ImGui.SetNextWindowSize(ImVec2(FIRST_WINDOW_WIDTH, FIRST_WINDOW_HEIGHT), ImGuiCond.FirstUseEver)
+    openGUI = ImGui.Begin("Task HUD##" .. my_name, openGUI, window_flags)
+    ImGui.PushItemWidth(100)
+    selected_info.selected_combo = ImGui.Combo('##CharacterCombo', selected_info.selected_combo, peer_list, #peer_list)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Selected character for tasks')
+    end
+    ImGui.SameLine()
+    selected_info.selected_peer_type = ImGui.Combo('##PeerSetCombo', selected_info.selected_peer_type, peer_types, #peer_types)
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Peer set to display')
+    end
+    ImGui.PopItemWidth()
+    ImGui.SameLine()
+    if ImGui.SmallButton(ICONS.MD_REFRESH) then
+        triggers.do_refresh = true
+    end
+    if ImGui.IsItemHovered() then
+        ImGui.SetTooltip('Refresh task data')
+    end
+    if task_data.tasks[peer_list[selected_info.selected_combo]] then
+        if #task_data.tasks[peer_list[selected_info.selected_combo]] < selected_info.selected_task then
+            selected_info.selected_task = 1
         end
-        ImGui.Separator()
-        local not_completed = {}
-        local received_names_lookup = {}
-        for _, received_name in pairs(task_data.data_received_from) do
-            ImGui.Text("Data received from - %s", received_name)
-            received_names_lookup[received_name] = true
-        end
-        for _, name in pairs(peer_info.connected_list) do
-            if not received_names_lookup[name] then
-                table.insert(not_completed, name)
-            end
-        end
-        if #not_completed > 0 then
-            ImGui.Text("Update not received from:")
-        end
-        for i, name in pairs(not_completed) do
-            ImGui.TextColored(IM_COL32(180, 50, 50, 255), name)
-            if i < #not_completed then
-                ImGui.SameLine()
-                ImGui.Text(ICONS.MD_REMOVE)
-                ImGui.SameLine()
-            end
-        end
-        ImGui.End()
-    else
-        if triggers.do_refresh then
-            dannet_connected()
-            return
-        end
-        ImGui.SetNextWindowSize(ImVec2(FIRST_WINDOW_WIDTH, FIRST_WINDOW_HEIGHT), ImGuiCond.FirstUseEver)
-        openGUI = ImGui.Begin("Task HUD##" .. my_name, openGUI, window_flags)
-        if drawGUI then
-            dannet_connected()
-            ImGui.PushItemWidth(100)
-            selected_info.selected_combo, triggers.changed = ImGui.Combo('##CharacterCombo', selected_info.selected_combo, peer_info.connected_list, #peer_info.connected_list,
-                #peer_info.connected_list)
-            if ImGui.IsItemHovered() then
-                ImGui.SetTooltip('Selected character for tasks')
-            end
-            ImGui.SameLine()
-            peer_info.peer_selected, triggers.do_refresh = ImGui.Combo('##PeerGroupCombo', peer_info.peer_selected, peer_info.peer_groups, #peer_info.peer_groups,
-                #peer_info.peer_groups)
-            if ImGui.IsItemHovered() then
-                ImGui.SetTooltip('Peer group')
-            end
-            ImGui.PopItemWidth()
-            ImGui.SameLine()
-            if ImGui.SmallButton(ICONS.MD_REFRESH) then
-                triggers.do_refresh = true
-            end
-            if task_data.tasks[peer_info.connected_list[selected_info.selected_combo]] then
-                ImGui.PushItemWidth(220)
-                task_data.task_selected = ImGui.Combo('##TaskCombo', task_data.task_selected, task_data.tasks[peer_info.connected_list[selected_info.selected_combo]])
-                ImGui.PopItemWidth()
-                if ImGui.IsItemHovered() then
-                    ImGui.SetTooltip('Selected task')
+        ImGui.PushItemWidth(220)
+        if ImGui.BeginCombo('##TaskCombo', task_data.tasks[peer_list[selected_info.selected_combo]][selected_info.selected_task].task_name) then
+            for i, task in ipairs(task_data.tasks[peer_list[selected_info.selected_combo]]) do
+                local is_selected = selected_info.selected_task == i
+                if ImGui.Selectable(task.task_name, is_selected) then
+                    selected_info.selected_task = i
+                end
+                if is_selected then
+                    ImGui.SetItemDefaultFocus()
                 end
             end
-            local missing_list = get_missing_tasks()
-            if #missing_list > 0 then
+            ImGui.EndCombo()
+        end
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip('Selected task')
+        end
+        ImGui.PopItemWidth()
+        local selected_task_name = task_data.tasks[peer_list[selected_info.selected_combo]][selected_info.selected_task].task_name
+        if missing[selected_task_name] then
+            local missing_characters = missing[selected_task_name].missing_characters
+            if #missing_characters > 0 then
                 ImGui.SeparatorText("Mising this task")
-                for i, missing in pairs(missing_list) do
-                    ImGui.TextColored(IM_COL32(180, 50, 50), string.upper(string.sub(missing, 1, 1)) .. string.sub(missing, 2, -1))
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip('Bring %s to foreground', string.upper(string.sub(missing, 1, 1)) .. string.sub(missing, 2, -1))
-                        if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
-                            mq.cmdf('/dex %s /foreground', missing)
+                for i, missing in ipairs(missing_characters) do
+                    ImGui.TextColored(IM_COL32(180, 50, 50), missing)
+                    if dannet then
+                        if ImGui.IsItemHovered() then
+                            ImGui.SetTooltip('Bring %s to foreground', missing)
+                            if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                mq.cmdf('/dex %s /foreground', missing)
+                            end
                         end
                     end
-                    if i < #missing_list then
+                    if i < #missing_characters then
                         ImGui.SameLine()
                         ImGui.Text(ICONS.MD_REMOVE)
                         ImGui.SameLine()
                     end
                 end
-                ImGui.Separator()
             end
-            local progress_info = get_objective_progress(missing_list)
-            if ImGui.BeginTable('##ObjectivesTable', 3, bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.RowBg, ImGuiTableFlags.Resizable)) then
-                for _, obj_info in pairs(progress_info) do
-                    ImGui.TableNextColumn()
-                    ImGui.Text(obj_info.objective)
-                    ImGui.TableNextColumn()
-                    if obj_info.status == 'Done' then
-                        ImGui.TextColored(IM_COL32(0, 255, 0, 255), obj_info.status)
-                    else
-                        ImGui.Text(obj_info.status)
-                    end
-                    ImGui.TableNextColumn()
-                    for _, comparison in pairs(obj_info.comparisons) do
-                        local name = comparison.name
-                        local first_status = comparison.first_status
-                        local second_status = comparison.second_status
-                        if first_status ~= second_status then
-                            local color = first_status == 'Done' and IM_COL32(50, 180, 50) or IM_COL32(180, 50, 50)
-                            ImGui.TextColored(color, string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                            if ImGui.IsItemHovered() then
-                                ImGui.SetTooltip('Bring %s to foreground', string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2, -1))
-                                if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
-                                    mq.cmdf('/dex %s /foreground', name)
+            ImGui.Separator()
+        end
+        if ImGui.BeginTable('##ObjectivesTable', 3, bit32.bor(ImGuiTableFlags.Borders, ImGuiTableFlags.RowBg, ImGuiTableFlags.Resizable)) then
+            local selected_task = task_data.tasks[peer_list[selected_info.selected_combo]][selected_info.selected_task]
+            for i, objective in ipairs(selected_task.objectives) do
+                ImGui.TableNextColumn()
+                ImGui.Text(objective.objective)
+                ImGui.TableNextColumn()
+                if objective.status == 'Done' then
+                    ImGui.TextColored(IM_COL32(0, 255, 0, 255), objective.status)
+                else
+                    ImGui.Text(objective.status)
+                end
+                ImGui.TableNextColumn()
+                if missing[selected_task_name] then
+                    local objectives = missing[selected_task_name].objectives
+                    for j, objective_info in pairs(objectives) do
+                        if objective_info.objective_name == objective.objective then
+                            for _, entry in ipairs(objective_info.characters) do
+                                if entry.status ~= objective.status and entry.character ~= peer_list[selected_info.selected_combo] and i == j then
+                                    local result = compare_status(objective.status, entry.status)
+                                    local color = result == -1 and IM_COL32(50, 180, 50) or (result == 1 and IM_COL32(180, 50, 10))
+                                    ImGui.TextColored(color, entry.character)
+                                    if dannet then
+                                        if ImGui.IsItemHovered() then
+                                            ImGui.SetTooltip('Bring %s to foreground', entry.character)
+                                            if ImGui.IsMouseReleased(ImGuiMouseButton.Left) then
+                                                mq.cmdf('/dex %s /foreground', entry.character)
+                                            end
+                                        end
+                                    end
                                 end
                             end
-                            ImGui.SameLine()
                         end
                     end
-                    ImGui.TableNextRow()
                 end
-                ImGui.EndTable()
+                ImGui.TableNextRow()
             end
+            ImGui.EndTable()
         end
-        ImGui.End()
     end
+
+    ImGui.End()
 end
 
---Initialization function. Gets list of connected peers and triggers a refresh
 local function init()
-    dannet_connected()
-    for i, name in pairs(peer_info.connected_list) do
-        if name == my_name then selected_info.selected_combo = i end
-    end
     mq.delay(500)
     triggers.do_refresh = true
     openGUI = true
 end
 
-local function update_event()
-    actors:send(
-        {
-            script = 'taskhud',
-            id = 'TASKS_UPDATED',
-            recepient = triggers.most_recent_requester,
-            sender = my_name
-        })
-end
-
-
---Handling for the /th command
 local cmd_th = function(cmd)
     if cmd == nil or cmd == 'help' then
         printf("%s \ar/th exit \ao--- Exit script (Also \ar/th stop \aoand \ar/th quit)", taskheader)
@@ -574,42 +348,30 @@ local cmd_th = function(cmd)
     end
 end
 
-
---[[
-    The main function loop
-    Loops while running is true
-    Checks trigger variables to see if an action is required
-]]
 local function main()
     mq.delay(500)
     while running == true do
-        --process events
         mq.doevents()
         mq.delay(200)
-        --Request a refresh of task and objective data
         if triggers.do_refresh == true then
             triggers.update_done = false
             request_task_update()
-        end
-        --A refresh was requested, send character data
-        if triggers.do_update_tasks == true then
-            send_character()
-        end
-        --Character info received send task/objectie info
-        if triggers.character_message_received == true then
-            update_tasks()
-        end
-        if #peer_info.connected_list == #task_data.data_received_from then
-            triggers.update_done = true
+            triggers.do_refresh = false
         end
     end
-    actors:send(
+    actor:send(
         {
             script = 'taskhud',
             id = 'END_SCRIPT',
             sender = my_name
         })
     mq.exit()
+end
+
+local function update_event()
+    actors:send({ id = 'TASKS_UPDATED' })
+    print(mq.gettime())
+    print(triggers.timestamp)
 end
 
 mq.bind('/th', cmd_th)
@@ -620,7 +382,7 @@ printf("%s \agstarting. use \ar/th help \agfor a list of commands.", taskheader)
 mq.imgui.init('displayGUI', displayGUI)
 
 if #arg == 0 then
-    mq.cmd('/dge /lua run taskhud nohud')
+    mq.cmd('/dge /lua run taskhud/init nohud')
     init()
     mq.delay(200)
     main()
@@ -629,4 +391,8 @@ elseif arg[1]:lower() == 'nohud' then
     main()
 elseif arg[1]:lower() == 'debug' then
     debug_mode = true
+    mq.cmd('/dge /lua run taskhud/init nohud')
+    init()
+    mq.delay(200)
+    main()
 end
