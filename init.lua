@@ -348,7 +348,7 @@ local cmd_th = function(cmd)
     end
 end
 
-local function generate_content()
+local function update_tasks()
     task_data.my_tasks = {}
     task_data.my_tasks = get_tasks()
     mq.delay(3000, function() return not mq.TLO.Window('TaskWnd').Open() end)
@@ -367,7 +367,7 @@ local function main()
         end
         if triggers.need_task_update then
             triggers.need_task_update = false
-            generate_content()
+            update_tasks()
         end
     end
     actor:send(
